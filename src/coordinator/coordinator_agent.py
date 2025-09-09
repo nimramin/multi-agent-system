@@ -7,10 +7,10 @@ import asyncio
 from typing import Dict, Any, List, Optional
 from groq import Groq
 from loguru import logger
-from ..agents.research_agent import ResearchAgent
-from ..agents.analysis_agent import AnalysisAgent
-from ..agents.memory_agent import MemoryAgent
-from ..models.message import AgentMessage, MessageType, TaskResult
+from agents.research_agent import ResearchAgent
+from agents.analysis_agent import AnalysisAgent
+from memory.memory_agent import MemoryAgent
+from models.message import AgentMessage, MessageType, TaskResult
 
 class CoordinatorAgent:
     """

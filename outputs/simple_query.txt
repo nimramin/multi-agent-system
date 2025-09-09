@@ -1,0 +1,13 @@
+Multi-Agent System Output - Simple Query
+Generated: 2025-09-10 03:59:07
+============================================================
+
+QUERY: What are the main types of neural networks?
+
+RESPONSE:
+No response generated
+
+CONFIDENCE: 0.30
+
+EXECUTION TRACE:
+  No trace available

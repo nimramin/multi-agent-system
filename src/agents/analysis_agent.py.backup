@@ -5,8 +5,8 @@ evaluating effectiveness, and generating insights.
 """
 import asyncio
 from typing import Dict, Any
-from agents.base_agent import BaseAgent
-from models.message import AgentMessage, TaskResult
+from .base_agent import BaseAgent
+from ..models.message import AgentMessage, TaskResult
 
 class AnalysisAgent(BaseAgent):
     """Agent specialized for analytical tasks and data processing"""

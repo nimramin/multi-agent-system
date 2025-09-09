@@ -1,0 +1,13 @@
+Multi-Agent System Output - Complex Query
+Generated: 2025-09-10 03:59:09
+============================================================
+
+QUERY: Research transformer architectures, analyze their computational efficiency, and summarize key trade-offs.
+
+RESPONSE:
+No response generated
+
+CONFIDENCE: 0.70
+
+EXECUTION TRACE:
+  No trace available

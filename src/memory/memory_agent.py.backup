@@ -10,8 +10,8 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import chromadb
 from chromadb.config import Settings
-from agents.base_agent import BaseAgent
-from models.message import AgentMessage, TaskResult
+from .base_agent import BaseAgent
+from ..models.message import AgentMessage, TaskResult
 
 class MemoryAgent(BaseAgent):
     """Agent specialized for memory management and retrieval"""
@@ -45,7 +45,7 @@ class MemoryAgent(BaseAgent):
     def _get_or_create_collection(self, name: str):
         """Get existing collection or create new one"""
         try:
-            return self.chroma_client.get_or_create_collection(name=name)
+            return self.chroma_client.get_collection(name=name)
         except ValueError:
             return self.chroma_client.create_collection(name=name)
     

@@ -6,7 +6,7 @@ All specialized agents inherit from this class.
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
 from loguru import logger
-from models.message import AgentMessage, TaskResult
+from ..models.message import AgentMessage, TaskResult
 
 class BaseAgent(ABC):
     """Abstract base class for all agents"""

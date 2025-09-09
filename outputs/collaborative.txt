@@ -1,0 +1,13 @@
+Multi-Agent System Output - Collaborative
+Generated: 2025-09-10 03:59:13
+============================================================
+
+QUERY: Compare two machine-learning approaches and recommend which is better for our use case.
+
+RESPONSE:
+No response generated
+
+CONFIDENCE: 0.80
+
+EXECUTION TRACE:
+  No trace available

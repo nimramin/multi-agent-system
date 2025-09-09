@@ -5,8 +5,8 @@ Searches for topics like neural networks, machine learning, etc.
 """
 import asyncio
 from typing import Dict, Any
-from agents.base_agent import BaseAgent
-from models.message import AgentMessage, TaskResult
+from .base_agent import BaseAgent
+from ..models.message import AgentMessage, TaskResult
 
 class ResearchAgent(BaseAgent):
     """Agent specialized for research and information retrieval"""
