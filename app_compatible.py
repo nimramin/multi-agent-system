@@ -43,23 +43,32 @@ def get_memory_stats(coordinator):
         memory_agent = coordinator.memory_agent
         stats = {}
         
-        # Try different ways to get memory count
-        # Try accessing conversation data through: ['conversation_collection', 'conversation_metadata', 'conversation_metadata_file']
-        
+        # Try to get conversation count from ChromaDB collections
         try:
             if hasattr(memory_agent, 'conversation_collection'):
-                conv_data = getattr(memory_agent, 'conversation_collection')
-                if hasattr(conv_data, '__len__'):
-                    stats['conversations'] = len(conv_data)
+                # ChromaDB collections have a count() method
+                stats['conversations'] = memory_agent.conversation_collection.count()
+            elif hasattr(memory_agent, 'conversation_metadata') and isinstance(memory_agent.conversation_metadata, list):
+                stats['conversations'] = len(memory_agent.conversation_metadata)
+            else:
+                stats['conversations'] = 0
         except:
-            pass
+            stats['conversations'] = 0
         
+        # Try to get knowledge count
+        try:
+            if hasattr(memory_agent, 'knowledge_collection'):
+                stats['knowledge'] = memory_agent.knowledge_collection.count()
+            elif hasattr(memory_agent, 'knowledge_base') and hasattr(memory_agent.knowledge_base, '__len__'):
+                stats['knowledge'] = len(memory_agent.knowledge_base)
+            else:
+                stats['knowledge'] = 0
+        except:
+            stats['knowledge'] = 0
         
         return stats
     except Exception as e:
-        st.error(f"Error getting memory stats: {e}")
-        return {}
-
+        return {'conversations': 0, 'knowledge': 0}
 def display_memory_stats():
     """Display memory system statistics in sidebar"""
     if 'coordinator' in st.session_state:
@@ -143,7 +152,7 @@ def main():
     # Display conversation history
     if st.session_state.get('messages'):
         st.subheader("Conversation History")
-        for msg in reversed(st.session_state.messages):
+        for msg in st.session_state.messages:
             with st.container():
                 st.write(f"**You:** {msg['query']}")
                 st.write(f"**System:** {msg['response'].get('synthesized_answer', 'No response')}")
@@ -152,6 +161,8 @@ def main():
                 if msg['response'].get('execution_trace'):
                     display_agent_trace(msg['response']['execution_trace'])
                 st.write("---")
+        # This helps scroll to the latest message
+        st.markdown("*💬 Latest conversation above*")
     
     # Query input
     query_input = st.text_input(
@@ -175,7 +186,11 @@ def main():
     if submit_button and query_input.strip():
         with st.spinner("Processing query through multi-agent system..."):
             response_data = asyncio.run(process_query(query_input))
-        
+            st.write("🔍 DEBUG: Raw response from coordinator:")
+            st.write("Response data:")
+            for key, value in response_data.items():
+                st.write(f"  {key}: {str(value)[:200]}{'...' if len(str(value)) > 200 else ''}")
+            st.write(f"�� DEBUG: synthesized_answer = {response_data.get('synthesized_answer', 'NOT FOUND')}")
         # Store message
         if 'messages' not in st.session_state:
             st.session_state.messages = []

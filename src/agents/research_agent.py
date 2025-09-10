@@ -51,10 +51,47 @@ class ResearchAgent(BaseAgent):
 
             # Fuzzy search in content if no direct matches
             if not results:
-                for topic, data in self.knowledge_base.items():
-                    if any(word in str(data).lower() for word in query.split()):
-                        results[topic] = data
-                        confidence += 0.2
+                # Check for meaningful query words (excluding common stop words)
+                stop_words = {'what', 'is', 'are', 'how', 'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'about', 'from', 'can', 'you', 'tell', 'me'}
+                query_words = [word for word in query.split() if word not in stop_words and len(word) > 2]
+                
+                # Only do fuzzy search if we have meaningful words
+                if query_words:
+                    for topic, data in self.knowledge_base.items():
+                        data_text = str(data).lower()
+                        matching_words = sum(1 for word in query_words if word in data_text)
+                        
+                        # Only include if at least 30% of meaningful query words match
+                        if len(query_words) > 0 and (matching_words / len(query_words)) >= 0.3:
+                            results[topic] = data
+                            confidence += 0.2
+
+            # If still no results, check if this is outside our domain
+            if not results:
+                # Check if the query is asking about our domain topics at all
+                domain_keywords = ['neural', 'network', 'machine', 'learning', 'transformer', 'ai', 'artificial', 'intelligence', 'algorithm', 'model', 'training', 'data', 'deep', 'classification', 'regression', 'supervised', 'unsupervised', 'reinforcement']
+                
+                has_domain_keywords = any(keyword in query for keyword in domain_keywords)
+                
+                if not has_domain_keywords:
+                    # Query is outside our domain - return limitation message
+                    return TaskResult(
+                        agent_id=self.agent_id,
+                        success=True,  # This is successful - we successfully identified it's outside our domain
+                        data={
+                            "research_results": {
+                                "knowledge_limitation": {
+                                    "message": f"I don't have specific information about '{message.content}' in my current knowledge base. My expertise covers machine learning, neural networks, transformers, optimization techniques, and related AI topics. Could you ask about one of these areas instead?",
+                                    "domain": "AI/ML topics only",
+                                    "suggested_topics": ["neural networks", "machine learning algorithms", "transformer architectures", "optimization techniques"]
+                                }
+                            },
+                            "query": query,
+                            "limitation_detected": True
+                        },
+                        confidence=0.9,  # High confidence that we don't know this topic
+                        execution_time=asyncio.get_event_loop().time() - start_time
+                    )
 
             confidence = min(confidence, 1.0)
             execution_time = asyncio.get_event_loop().time() - start_time
@@ -66,7 +103,6 @@ class ResearchAgent(BaseAgent):
                 confidence=confidence,
                 execution_time=execution_time
             )
-
         except Exception as e:
             return TaskResult(
                 agent_id=self.agent_id,

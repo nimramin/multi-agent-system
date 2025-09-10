@@ -232,7 +232,7 @@ async def process_query(query: str):
     """Process user query through the multi-agent system"""
     try:
         # Use the correct method name (you fixed this already)
-        response = await st.session_state.coordinator.process_query(query)
+        response = await st.session_state.coordinator.process_user_query(query)
         return response
     except Exception as e:
         return {

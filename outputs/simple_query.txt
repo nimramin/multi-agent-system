@@ -1,13 +1,26 @@
-Multi-Agent System Output - Simple Query
-Generated: 2025-09-10 03:59:07
+Multi-Agent System Test Output
+Scenario: Simple Query
+Query: What are the main types of neural networks?
+Timestamp: 2025-09-10T05:01:13.659468
 ============================================================
 
-QUERY: What are the main types of neural networks?
-
 RESPONSE:
-No response generated
+Based on my research, I found the following information:
+
+**Neural Networks:**
+Neural networks are computing systems inspired by biological neural networks
+The main types include: CNN, RNN, LSTM, GRU, Transformer
+These are commonly used for: image recognition, NLP, time series
 
 CONFIDENCE: 0.30
 
-EXECUTION TRACE:
-  No trace available
+AGENT EXECUTION TRACE:
+Step 1: research_agent
+  Action: No action recorded
+  Result: No result recorded
+  Timestamp: No timestamp
+
+
+MEMORY STATE:
+Conversations stored: 0
+Knowledge entries: 0

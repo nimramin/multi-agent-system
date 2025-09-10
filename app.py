@@ -56,9 +56,24 @@ def display_memory_stats():
     if 'coordinator' in st.session_state:
         memory_agent = st.session_state.coordinator.memory_agent
         
-        # Get memory stats
-        conversation_count = len(memory_agent.conversation_memory)
-        knowledge_count = len(memory_agent.knowledge_base)
+        # Get memory stats safely
+        try:
+            # Try to get conversation count from ChromaDB collections
+            if hasattr(memory_agent, 'conversation_collection'):
+                conversation_count = memory_agent.conversation_collection.count()
+            else:
+                conversation_count = "N/A"
+        except:
+            conversation_count = "N/A"
+
+        try:
+            # Try to get knowledge count
+            if hasattr(memory_agent, 'knowledge_collection'):
+                knowledge_count = memory_agent.knowledge_collection.count()
+            else:
+                knowledge_count = "N/A"
+        except:
+            knowledge_count = "N/A"
         
         st.sidebar.subheader("📊 Memory Statistics")
         st.sidebar.metric("Conversations Stored", conversation_count)

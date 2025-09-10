@@ -99,7 +99,8 @@ Respond with a JSON plan:
 
         response = self.groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama3-8b-8192",
+            # model="llama3-8b-8192",
+            model="openai/gpt-oss-20b",
             temperature=0.1
         )
 
@@ -130,6 +131,11 @@ Respond with a JSON plan:
         if any(word in query_lower for word in ["compare", "analyze", "evaluate", "effective", "better", "best"]):
             agents_needed.append("analysis_agent")
             execution_steps.append("analysis")
+            
+            # If we need to compare/analyze, we should also research first to get data
+            if "research_agent" not in agents_needed:
+                agents_needed.insert(0, "research_agent")
+                execution_steps.insert(0, "research")
 
         # Check if memory is needed
         if any(word in query_lower for word in ["remember", "earlier", "before", "what did", "previous"]):
@@ -269,9 +275,10 @@ Respond with a JSON plan:
         # Calculate overall confidence
         if successful_agents > 0:
             response["confidence"] = total_confidence / successful_agents
-        
-        # Generate synthesized answer
-        response["synthesized_answer"] = self._generate_synthesized_answer(query, response["agent_results"])
+        # #Generate synthesized answer
+        # response["synthesized_answer"] = self._generate_synthesized_answer(query, response["agent_results"])
+        # Generate detailed answer
+        response["synthesized_answer"] = self._generate_detailed_answer(query, response["agent_results"])
         
         return response
     
@@ -305,6 +312,109 @@ Respond with a JSON plan:
             return ". ".join(answer_parts) + "."
         else:
             return "I processed your query but couldn't find specific information to answer it."
+    
+    def _generate_detailed_answer(self, query: str, agent_results: Dict[str, Any]) -> str:
+        """Generate detailed, comprehensive answer by extracting and formatting all available information"""
+        
+         # Check if research agent detected a knowledge limitation
+        if "research_agent" in agent_results:
+            research_data = agent_results["research_agent"]["data"]
+            if research_data.get("limitation_detected"):
+                limitation_info = research_data["research_results"].get("knowledge_limitation", {})
+                return limitation_info.get("message", "I don't have information about this topic in my knowledge base.")
+    
+        answer_parts = []
+        
+        # Add detailed research findings
+        if "research_agent" in agent_results:
+            research_data = agent_results["research_agent"]["data"]
+            if "research_results" in research_data:
+                results = research_data["research_results"]
+                if results:
+                    answer_parts.append("Based on my research, I found the following information:")
+                    
+                    for topic, data in results.items():
+                        # Format topic name nicely
+                        topic_name = topic.replace('_', ' ').title()
+                        answer_parts.append(f"\n**{topic_name}:**")
+                        
+                        # Add description if available
+                        if "description" in data:
+                            answer_parts.append(f"{data['description']}")
+                        
+                        # Add types if available
+                        if "types" in data and data["types"]:
+                            types_list = ", ".join(data["types"])
+                            answer_parts.append(f"The main types include: {types_list}")
+                        
+                        # Add applications if available
+                        if "applications" in data and data["applications"]:
+                            apps_list = ", ".join(data["applications"])
+                            answer_parts.append(f"These are commonly used for: {apps_list}")
+                        
+                        # Add algorithms if available
+                        if "algorithms" in data and data["algorithms"]:
+                            alg_list = ", ".join(data["algorithms"])
+                            answer_parts.append(f"Key algorithms include: {alg_list}")
+                        
+                        # Add optimization methods if available
+                        if "optimization" in data and data["optimization"]:
+                            opt_list = ", ".join(data["optimization"])
+                            answer_parts.append(f"Common optimization techniques: {opt_list}")
+                        
+                        # Add architectures if available
+                        if "architectures" in data and data["architectures"]:
+                            arch_list = ", ".join(data["architectures"])
+                            answer_parts.append(f"Popular architectures: {arch_list}")
+                        
+                        # Add efficiency information if available
+                        if "efficiency" in data and isinstance(data["efficiency"], dict):
+                            efficiency_info = []
+                            for key, value in data["efficiency"].items():
+                                efficiency_info.append(f"{key}: {value}")
+                            answer_parts.append(f"Efficiency considerations: {', '.join(efficiency_info)}")
+                        
+                        # Add tradeoffs if available
+                        if "tradeoffs" in data:
+                            answer_parts.append(f"Key tradeoffs: {data['tradeoffs']}")
+        
+        # Add detailed analysis insights
+        if "analysis_agent" in agent_results:
+            analysis_data = agent_results["analysis_agent"]["data"]
+            if "analysis" in analysis_data:
+                analysis = analysis_data["analysis"]
+                answer_parts.append("\n**Analysis:**")
+                
+                if "analysis_type" in analysis:
+                    answer_parts.append(f"Analysis type: {analysis['analysis_type']}")
+                
+                if "findings" in analysis:
+                    answer_parts.append(f"Key findings: {analysis['findings']}")
+                
+                if "insights" in analysis and isinstance(analysis["insights"], list):
+                    insights_list = "; ".join(analysis["insights"])
+                    answer_parts.append(f"Insights: {insights_list}")
+                
+                if "recommendation" in analysis:
+                    answer_parts.append(f"Recommendation: {analysis['recommendation']}")
+                
+                if "metrics" in analysis and isinstance(analysis["metrics"], dict):
+                    metrics_info = []
+                    for key, value in analysis["metrics"].items():
+                        metrics_info.append(f"{key}: {value}")
+                    answer_parts.append(f"Metrics: {', '.join(metrics_info)}")
+        
+        # Add memory context
+        if "memory_agent" in agent_results:
+            memory_data = agent_results["memory_agent"]["data"]
+            if "results" in memory_data and memory_data["results"]:
+                answer_parts.append("\n**Previous Context:**")
+                answer_parts.append("I found relevant information from our previous conversations that relates to your question.")
+        
+        if answer_parts:
+            return "\n".join(answer_parts)
+        else:
+            return "I processed your query but couldn't find specific information to answer it. Please try rephrasing your question or asking about a different topic."
     
     async def _store_interaction(self, query: str, response: Dict[str, Any], results: List[TaskResult]):
         """Store the interaction in memory for future reference"""

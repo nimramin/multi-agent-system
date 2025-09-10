@@ -66,7 +66,7 @@ class OutputGenerator:
                 f"{'='*60}",
                 "",
                 f"RESPONSE:",
-                response.get('response', 'No response generated'),
+                response.get('synthesized_answer', 'No response generated'),
                 "",
                 f"CONFIDENCE: {response.get('confidence', 0.0):.2f}",
                 "",
@@ -74,7 +74,7 @@ class OutputGenerator:
             ]
             
             # Add trace information
-            trace = response.get('trace', [])
+            trace = response.get('execution_trace', [])
             if trace:
                 for i, step in enumerate(trace, 1):
                     output_content.extend([
@@ -91,8 +91,8 @@ class OutputGenerator:
             output_content.extend([
                 "",
                 f"MEMORY STATE:",
-                f"Conversations stored: {len(self.coordinator.memory_agent.conversation_memory)}",
-                f"Knowledge entries: {len(self.coordinator.memory_agent.knowledge_base)}",
+                f"Conversations stored: {len(self.coordinator.memory_agent.conversation_metadata)}",
+                f"Knowledge entries: {len(self.coordinator.memory_agent.knowledge_metadata)}",
                 ""
             ])
             
@@ -101,7 +101,7 @@ class OutputGenerator:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(output_content))
             
-            print(f"\nRESPONSE: {response.get('response', 'No response')}")
+            print(f"\nRESPONSE: {response.get('synthesized_answer', 'No response')}")
             print(f"CONFIDENCE: {response.get('confidence', 0.0):.2f}")
             print(f"OUTPUT SAVED TO: {output_file}")
             
