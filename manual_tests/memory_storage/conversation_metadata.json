@@ -1,0 +1,113 @@
+{
+  "conversation_1757518161.787968": {
+    "content": "store: previous finding about transformers tradeoffs",
+    "data": {
+      "topic": "transformers",
+      "note": "tradeoffs noted"
+    },
+    "timestamp": "2025-09-10 20:29:21.798337",
+    "sender": "coordinator",
+    "topic": "transformers",
+    "keywords": [
+      "store",
+      "previous",
+      "finding",
+      "about",
+      "transformers",
+      "tradeoffs"
+    ],
+    "source": "unknown",
+    "agent": "coordinator",
+    "confidence": 0.5
+  },
+  "conversation_1757518469.130283": {
+    "content": "store: previous finding about transformers efficiency tradeoffs",
+    "data": {
+      "topic": "transformers",
+      "note": "store: previous finding about transformers efficiency tradeoffs"
+    },
+    "timestamp": "2025-09-10 20:34:29.137925",
+    "sender": "tester",
+    "topic": "transformers",
+    "keywords": [
+      "store",
+      "previous",
+      "finding",
+      "about",
+      "transformers",
+      "efficiency",
+      "tradeoffs"
+    ],
+    "source": "unknown",
+    "agent": "tester",
+    "confidence": 0.5
+  },
+  "conversation_1757518469.138251": {
+    "content": "store: prior summary mentioning transformer architectures and their costs",
+    "data": {
+      "topic": "transformers",
+      "note": "store: prior summary mentioning transformer architectures and their costs"
+    },
+    "timestamp": "2025-09-10 20:34:29.140787",
+    "sender": "tester",
+    "topic": "transformers",
+    "keywords": [
+      "store",
+      "prior",
+      "summary",
+      "mentioning",
+      "transformer",
+      "architectures",
+      "their",
+      "costs"
+    ],
+    "source": "unknown",
+    "agent": "tester",
+    "confidence": 0.5
+  },
+  "conversation_1757519784.270625": {
+    "content": "store: previous finding about transformers efficiency tradeoffs",
+    "data": {
+      "topic": "transformers",
+      "note": "store: previous finding about transformers efficiency tradeoffs"
+    },
+    "timestamp": "2025-09-10 20:56:24.273454",
+    "sender": "tester",
+    "topic": "transformers",
+    "keywords": [
+      "store",
+      "previous",
+      "finding",
+      "about",
+      "transformers",
+      "efficiency",
+      "tradeoffs"
+    ],
+    "source": "unknown",
+    "agent": "tester",
+    "confidence": 0.5
+  },
+  "conversation_1757519784.273796": {
+    "content": "store: prior summary mentioning transformer architectures and their costs",
+    "data": {
+      "topic": "transformers",
+      "note": "store: prior summary mentioning transformer architectures and their costs"
+    },
+    "timestamp": "2025-09-10 20:56:24.276791",
+    "sender": "tester",
+    "topic": "transformers",
+    "keywords": [
+      "store",
+      "prior",
+      "summary",
+      "mentioning",
+      "transformer",
+      "architectures",
+      "their",
+      "costs"
+    ],
+    "source": "unknown",
+    "agent": "tester",
+    "confidence": 0.5
+  }
+}

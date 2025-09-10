@@ -9,10 +9,10 @@ import asyncio
 import shutil
 from datetime import datetime
 
-# Add src to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Add src to Python path (project_root/src)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from agents.memory_agent import MemoryAgent
+from memory.memory_agent import MemoryAgent
 from models.message import AgentMessage, MessageType
 
 async def test_memory_agent_initialization():

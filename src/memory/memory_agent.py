@@ -12,10 +12,10 @@ import chromadb
 from chromadb.config import Settings
 from agents.base_agent import BaseAgent
 from models.message import AgentMessage, TaskResult
+from loguru import logger
 
 class MemoryAgent(BaseAgent):
     """Agent specialized for memory management and retrieval"""
-    
     def __init__(self, storage_path: str = "memory_storage"):
         """Initialize Memory Agent with vector DB and file storage"""
         super().__init__("memory_agent", ["store", "retrieve", "search", "remember"])
@@ -23,13 +23,13 @@ class MemoryAgent(BaseAgent):
         self.storage_path = storage_path
         os.makedirs(storage_path, exist_ok=True)
         
-        # Initialize ChromaDB for vector similarity search
+        # Initialize ChromaDB with default settings - no custom embeddings
         self.chroma_client = chromadb.PersistentClient(
             path=os.path.join(storage_path, "chroma_db"),
             settings=Settings(anonymized_telemetry=False)
         )
         
-        # Create collections for different memory types
+        # Create collections with default embeddings
         self.conversation_collection = self._get_or_create_collection("conversations")
         self.knowledge_collection = self._get_or_create_collection("knowledge")
         self.agent_state_collection = self._get_or_create_collection("agent_states")
@@ -41,14 +41,14 @@ class MemoryAgent(BaseAgent):
         # Load existing metadata
         self.conversation_metadata = self._load_metadata(self.conversation_metadata_file)
         self.knowledge_metadata = self._load_metadata(self.knowledge_metadata_file)
-        
+        self.embedding_function = None  # Force default ChromaDB embeddings
+    
     def _get_or_create_collection(self, name: str):
         """Get existing collection or create new one"""
         try:
             return self.chroma_client.get_or_create_collection(name=name)
         except ValueError:
             return self.chroma_client.create_collection(name=name)
-    
     def _load_metadata(self, file_path: str) -> Dict[str, Any]:
         """Load metadata from JSON file"""
         if os.path.exists(file_path):
@@ -69,11 +69,15 @@ class MemoryAgent(BaseAgent):
         try:
             content = message.content.lower()
             
-            if "store" in content or "save" in content:
+            def _has_word(text: str, word: str) -> bool:
+                import re
+                return re.search(rf"\b{re.escape(word)}\b", text) is not None
+            
+            if _has_word(content, "store") or _has_word(content, "save"):
                 result = await self._store_memory(message)
-            elif "retrieve" in content or "get" in content:
+            elif _has_word(content, "retrieve") or _has_word(content, "get"):
                 result = await self._retrieve_memory(message)
-            elif "search" in content or "find" in content:
+            elif _has_word(content, "search") or _has_word(content, "find"):
                 result = await self._search_memory(message)
             else:
                 result = await self._general_memory_query(message)
@@ -102,12 +106,29 @@ class MemoryAgent(BaseAgent):
         """Store new information in memory"""
         data = message.metadata.get("data", {})
         memory_type = message.metadata.get("memory_type", "conversation")
+        topic = message.metadata.get("topic")
+        keywords: List[str] = message.metadata.get("keywords", [])
+        source = message.metadata.get("source", "unknown")
+        confidence = message.metadata.get("confidence", 0.5)
+        agent_name = message.metadata.get("agent", message.sender)
         
         # Generate unique ID for this memory
         memory_id = f"{memory_type}_{datetime.now().timestamp()}"
         
         # Prepare content for vector storage
         content_text = f"{message.content} {json.dumps(data)}"
+        # Basic keyword extraction fallback if none provided
+        if not keywords:
+            words = [w.strip('.,:;!?#()[]{}"\'') for w in message.content.lower().split()]
+            keywords = [w for w in words if w.isalpha() and len(w) > 3][:10]
+        # Try to infer topic from data if not provided
+        if topic is None and isinstance(data, dict):
+            topic = data.get("topic")
+        # Chroma metadatas must be primitives and non-None
+        keywords_csv = ",".join(keywords) if keywords else ""
+        topic_str = str(topic) if topic is not None else ""
+        source_str = str(source) if source is not None else ""
+        agent_str = str(agent_name) if agent_name is not None else ""
         
         if memory_type == "conversation":
             # Store in conversation collection
@@ -116,9 +137,15 @@ class MemoryAgent(BaseAgent):
                 metadatas=[{
                     "timestamp": str(datetime.now()),
                     "sender": message.sender,
-                    "type": "conversation"
+                    "type": "conversation",
+                    "topic": topic_str,
+                    "keywords_csv": keywords_csv,
+                    "source": source_str,
+                    "agent": agent_str,
+                    "confidence": confidence
                 }],
-                ids=[memory_id]
+                ids=[memory_id],
+                # embeddings=None if self.embedding_function else [self._cheap_embed(content_text, self._fallback_embedding_dim)]
             )
             
             # Update metadata
@@ -126,7 +153,12 @@ class MemoryAgent(BaseAgent):
                 "content": message.content,
                 "data": data,
                 "timestamp": str(datetime.now()),
-                "sender": message.sender
+                "sender": message.sender,
+                "topic": topic,
+                "keywords": keywords,
+                "source": source,
+                "agent": agent_name,
+                "confidence": confidence
             }
             self._save_metadata(self.conversation_metadata, self.conversation_metadata_file)
             
@@ -136,11 +168,15 @@ class MemoryAgent(BaseAgent):
                 documents=[content_text],
                 metadatas=[{
                     "timestamp": str(datetime.now()),
-                    "source": message.metadata.get("source", "unknown"),
-                    "confidence": message.metadata.get("confidence", 0.5),
-                    "type": "knowledge"
+                    "source": source,
+                    "confidence": confidence,
+                    "type": "knowledge",
+                    "topic": topic_str,
+                    "keywords_csv": keywords_csv,
+                    "agent": agent_str
                 }],
-                ids=[memory_id]
+                ids=[memory_id],
+                embeddings=None if self.embedding_function else [self._cheap_embed(content_text, self._fallback_embedding_dim)]
             )
             
             # Update knowledge metadata
@@ -148,10 +184,44 @@ class MemoryAgent(BaseAgent):
                 "content": message.content,
                 "data": data,
                 "timestamp": str(datetime.now()),
-                "source": message.metadata.get("source", "unknown"),
-                "confidence": message.metadata.get("confidence", 0.5)
+                "source": source,
+                "confidence": confidence,
+                "topic": topic,
+                "keywords": keywords,
+                "agent": agent_name
             }
             self._save_metadata(self.knowledge_metadata, self.knowledge_metadata_file)
+        elif memory_type == "agent_state":
+            # Track what each agent learned/accomplished per task
+            self.agent_state_collection.add(
+                documents=[content_text],
+                metadatas=[{
+                    "timestamp": str(datetime.now()),
+                    "agent": agent_str,
+                    "type": "agent_state",
+                    "topic": topic_str,
+                    "keywords_csv": keywords_csv,
+                    "source": source_str,
+                    "confidence": confidence
+                }],
+                ids=[memory_id],
+                embeddings=None if self.embedding_function else [self._cheap_embed(content_text, self._fallback_embedding_dim)]
+            )
+            # Persist agent state to conversation metadata file under a dedicated key
+            # (kept simple to avoid new file introduction)
+            state_key = "__agent_state__"
+            if state_key not in self.conversation_metadata:
+                self.conversation_metadata[state_key] = []
+            self.conversation_metadata[state_key].append({
+                "id": memory_id,
+                "agent": agent_name,
+                "topic": topic,
+                "keywords": keywords,
+                "data": data,
+                "timestamp": str(datetime.now()),
+                "confidence": confidence
+            })
+            self._save_metadata(self.conversation_metadata, self.conversation_metadata_file)
         
         return {
             "action": "stored",
@@ -196,32 +266,93 @@ class MemoryAgent(BaseAgent):
         return {"action": "retrieved", "result": "not found"}
     
     async def _search_memory(self, message: AgentMessage) -> Dict[str, Any]:
-        """Search memory using vector similarity"""
+        """Search memory using keyword/topic filters plus vector similarity"""
         query = message.content
         memory_type = message.metadata.get("memory_type", "conversation")
         n_results = message.metadata.get("limit", 3)
+        topic_filter = message.metadata.get("topic")
+        keywords_filter: List[str] = message.metadata.get("keywords", [])
         
         # Choose collection based on memory type
         collection = (self.conversation_collection if memory_type == "conversation" 
                      else self.knowledge_collection)
-        
-        # Perform vector similarity search
-        results = collection.query(
-            query_texts=[query],
-            n_results=n_results
-        )
-        
-        # Format results
         search_results = []
-        if results["documents"] and results["documents"][0]:
-            for i, doc in enumerate(results["documents"][0]):
-                result_data = {
-                    "content": doc,
-                    "metadata": results["metadatas"][0][i],
-                    "distance": results["distances"][0][i] if "distances" in results else None,
-                    "id": results["ids"][0][i]
-                }
-                search_results.append(result_data)
+        try:
+            # Perform vector similarity search when embeddings are available
+            results = collection.query(
+                query_texts=[query],
+                n_results=n_results
+            )
+            if results.get("documents") and results["documents"][0]:
+                for i, doc in enumerate(results["documents"][0]):
+                    meta = results["metadatas"][0][i]
+                    match_topic = (topic_filter is None) or (meta.get("topic") == topic_filter)
+                    match_keywords = True
+                    if keywords_filter:
+                        stored_csv = meta.get("keywords_csv") or ""
+                        match_keywords = any(k in stored_csv for k in keywords_filter)
+                    if match_topic and match_keywords:
+                        result_data = {
+                            "content": doc,
+                            "metadata": meta,
+                            "distance": results.get("distances", [[None]])[0][i],
+                            "id": results.get("ids", [[None]])[0][i]
+                        }
+                        search_results.append(result_data)
+        except Exception:
+            # Fallback: no embeddings available. Do a simple substring search over stored documents.
+            all_items = collection.get(limit=100)
+            docs = all_items.get("documents", []) or []
+            metas = all_items.get("metadatas", []) or []
+            ids = all_items.get("ids", []) or []
+            # Build simple query tokens
+            stop_words = {"the","a","an","and","or","but","in","on","at","to","for","of","with","by","about","is","are","what","find","search"}
+            q_tokens = [w for w in query.lower().split() if w not in stop_words and len(w) > 2]
+            for i, doc in enumerate(docs):
+                meta = metas[i] if i < len(metas) else {}
+                # Basic match: any token contained
+                doc_lower = (doc or "").lower()
+                match_text = any(t in doc_lower for t in q_tokens) if q_tokens else False
+                match_topic = (topic_filter is None) or (meta.get("topic") == topic_filter)
+                match_keywords = True
+                if keywords_filter:
+                    stored_csv = meta.get("keywords_csv") or ""
+                    match_keywords = any(k in stored_csv for k in keywords_filter)
+                if match_text and match_topic and match_keywords:
+                    search_results.append({
+                        "content": doc,
+                        "metadata": meta,
+                        "distance": None,
+                        "id": ids[i] if i < len(ids) else None
+                    })
+            # Truncate to requested number
+            search_results = search_results[:n_results]
+
+        # If vector search returned nothing, attempt textual fallback too
+        if not search_results:
+            all_items = collection.get(limit=100)
+            docs = all_items.get("documents", []) or []
+            metas = all_items.get("metadatas", []) or []
+            ids = all_items.get("ids", []) or []
+            stop_words = {"the","a","an","and","or","but","in","on","at","to","for","of","with","by","about","is","are","what","find","search","retrieve","get"}
+            q_tokens = [w for w in query.lower().split() if w not in stop_words and len(w) > 2]
+            for i, doc in enumerate(docs):
+                meta = metas[i] if i < len(metas) else {}
+                doc_lower = (doc or "").lower()
+                match_text = any(t in doc_lower for t in q_tokens) if q_tokens else False
+                match_topic = (topic_filter is None) or (meta.get("topic") == topic_filter)
+                match_keywords = True
+                if keywords_filter:
+                    stored_csv = meta.get("keywords_csv") or ""
+                    match_keywords = any(k in stored_csv for k in keywords_filter)
+                if match_text and match_topic and match_keywords:
+                    search_results.append({
+                        "content": doc,
+                        "metadata": meta,
+                        "distance": None,
+                        "id": ids[i] if i < len(ids) else None
+                    })
+            search_results = search_results[:n_results]
         
         return {
             "action": "searched",

@@ -1,10 +1,12 @@
 Multi-Agent System Test Output
-Scenario: Multi-step
+=************************************************************
+Scenario: Multi-step Query
 Query: Find recent papers on reinforcement learning, analyze their methodologies, and identify common challenges.
-Timestamp: 2025-09-10T05:01:20.937457
-============================================================
+Timestamp: 2025-09-10T22:52:11.656098
+=************************************************************
 
-RESPONSE:
+SYNTHESIZED ANSWER:
+----------------------------------------
 Based on my research, I found the following information:
 
 **Machine Learning:**
@@ -18,20 +20,57 @@ Key findings: Based on available data, multiple approaches show promise
 Insights: Each approach has unique strengths; Context-dependent effectiveness
 Metrics: coverage: 2, depth: moderate
 
-CONFIDENCE: 0.55
+SYSTEM METRICS:
+----------------------------------------
+Overall Confidence: 0.47
+Success: True
+Agents Involved: 3
 
-AGENT EXECUTION TRACE:
-Step 1: research_agent
-  Action: No action recorded
-  Result: No result recorded
-  Timestamp: No timestamp
+AGENT EXECUTION DETAILS:
+----------------------------------------
+MEMORY AGENT:
+  Confidence: 0.30
+  Execution Time: 0.000s
+  Memory Hits: 0
 
-Step 2: analysis_agent
-  Action: No action recorded
-  Result: No result recorded
-  Timestamp: No timestamp
+RESEARCH AGENT:
+  Confidence: 0.30
+  Execution Time: 0.000s
+  Topics Found: machine_learning
 
+ANALYSIS AGENT:
+  Confidence: 0.80
+  Execution Time: 0.000s
+  Analysis Type: effectiveness_analysis
 
-MEMORY STATE:
-Conversations stored: 0
-Knowledge entries: 0
+EXECUTION TRACE:
+----------------------------------------
+Step 1: memory_agent
+  Status: SUCCESS
+  Time: 0.000s
+
+Step 2: research_agent
+  Status: SUCCESS
+  Time: 0.000s
+
+Step 3: analysis_agent
+  Status: SUCCESS
+  Time: 0.000s
+
+MEMORY SYSTEM STATUS:
+----------------------------------------
+Conversations Stored: 0
+Knowledge Entries: 0
+Storage Path: memory_storage
+
+AGENT COLLABORATION SUMMARY:
+----------------------------------------
+This scenario demonstrated multi-agent coordination where:
+- Research Agent retrieved relevant information from knowledge base
+- Analysis Agent processed and analyzed the research data
+- Memory Agent stored/retrieved conversation context
+- Coordinator orchestrated the entire process and synthesized results
+
+============================================================
+End of Multi-step Query Test Output
+============================================================

@@ -1,10 +1,12 @@
 Multi-Agent System Test Output
+=************************************************************
 Scenario: Memory Test
 Query: What did we discuss about neural networks earlier?
-Timestamp: 2025-09-10T05:01:18.492502
-============================================================
+Timestamp: 2025-09-10T22:52:09.417217
+=************************************************************
 
-RESPONSE:
+SYNTHESIZED ANSWER:
+----------------------------------------
 Based on my research, I found the following information:
 
 **Neural Networks:**
@@ -12,20 +14,51 @@ Neural networks are computing systems inspired by biological neural networks
 The main types include: CNN, RNN, LSTM, GRU, Transformer
 These are commonly used for: image recognition, NLP, time series
 
-CONFIDENCE: 0.60
+SYSTEM METRICS:
+----------------------------------------
+Overall Confidence: 0.50
+Success: True
+Agents Involved: 2
 
-AGENT EXECUTION TRACE:
+AGENT EXECUTION DETAILS:
+----------------------------------------
+MEMORY AGENT:
+  Confidence: 0.90
+  Execution Time: 0.118s
+  Memory Hits: 0
+
+RESEARCH AGENT:
+  Confidence: 0.30
+  Execution Time: 0.000s
+  Topics Found: neural_networks
+
+EXECUTION TRACE:
+----------------------------------------
 Step 1: memory_agent
-  Action: No action recorded
-  Result: No result recorded
-  Timestamp: No timestamp
+  Status: SUCCESS
+  Time: 0.000s
 
-Step 2: research_agent
-  Action: No action recorded
-  Result: No result recorded
-  Timestamp: No timestamp
+Step 2: memory_agent
+  Status: SUCCESS
+  Time: 0.118s
 
+Step 3: research_agent
+  Status: SUCCESS
+  Time: 0.000s
 
-MEMORY STATE:
-Conversations stored: 0
-Knowledge entries: 0
+MEMORY SYSTEM STATUS:
+----------------------------------------
+Conversations Stored: 0
+Knowledge Entries: 0
+Storage Path: memory_storage
+
+AGENT COLLABORATION SUMMARY:
+----------------------------------------
+This scenario demonstrated multi-agent coordination where:
+- Research Agent retrieved relevant information from knowledge base
+- Memory Agent stored/retrieved conversation context
+- Coordinator orchestrated the entire process and synthesized results
+
+============================================================
+End of Memory Test Test Output
+============================================================

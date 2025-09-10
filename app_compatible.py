@@ -101,21 +101,99 @@ async def process_query(query: str):
             "execution_trace": []
         }
 
-def display_agent_trace(trace_data):
-    """Display agent execution trace in an expandable section"""
+def display_agent_trace(trace_data, agent_results=None):
+    """Display agent execution trace in an expandable section.
+    Now also shows memory-specific metadata when available (hit count, best_distance, reused).
+    """
+    if agent_results is None:
+        agent_results = {}
+
     if not trace_data:
         return
-        
+
     with st.expander("🔍 Agent Execution Trace", expanded=False):
         for i, step in enumerate(trace_data):
-            st.write(f"**Step {i+1}: {step.get('agent', 'Unknown')}**")
+            agent = step.get('agent', 'Unknown')
+            st.markdown(f"**Step {i+1}: {agent}**")
+            st.write(f"*Success:* {step.get('success', 'N/A')}")
+            if step.get('execution_time') is not None:
+                st.write(f"*Execution time:* {step.get('execution_time'):.3f}s")
+            # Show agent-level reported details if present in agent_results
+            ar = agent_results.get(agent)
+            if ar:
+                # confidence + short data-preview
+                conf = ar.get('confidence')
+                if conf is not None:
+                    st.write(f"*Reported confidence:* {conf:.2f}")
+                exec_time = ar.get('execution_time')
+                if exec_time is not None:
+                    st.write(f"*Agent execution time (reported):* {exec_time:.3f}s")
+
+                data = ar.get('data', {})
+                # MEMORY AGENT: show useful metrics
+                if agent == "memory_agent":
+                    # handle multiple shapes returned by MemoryAgent
+                    results = None
+                    if isinstance(data, dict):
+                        results = data.get("results") or data.get("memories") or data.get("memories", None)
+                        # also allow normalized structure: data might already be {"results": [...], "count": N}
+                        if results is None and "count" in data and isinstance(data.get("count"), int):
+                            # use count and best_distance fields
+                            pass
+                    if results is None and isinstance(data, list):
+                        results = data
+
+                    count = len(results) if results else data.get("count", 0) if isinstance(data, dict) else 0
+                    st.write(f"*Memory hits:* {count}")
+
+                    best = None
+                    if isinstance(data, dict):
+                        best = data.get("best_distance") or data.get("distance")
+                    if best is not None:
+                        st.write(f"*Best distance:* {best}")
+
+                    # Was memory actually reused for research? check research_agent's reported data
+                    reused = False
+                    research_data = agent_results.get("research_agent", {}).get("data", {})
+                    if isinstance(research_data, dict):
+                        rr = research_data.get("research_results") or {}
+                        if isinstance(rr, dict) and rr.get("source") == "memory":
+                            reused = True
+                    st.write(f"*Memory reused for research:* {'✅' if reused else 'No'}")
+
+                    # Small snippet of the first hit (if any)
+                    if results:
+                        try:
+                            snippet = results[0].get("content") if isinstance(results[0], dict) else str(results[0])
+                            snippet = (snippet or "")[:300]
+                            st.write(f"*Top hit snippet:* {snippet}{'...' if len(snippet) == 300 else ''}")
+                        except Exception:
+                            pass
+                else:
+                    # Generic preview for other agents
+                    try:
+                        preview = None
+                        if isinstance(data, dict):
+                            # show up to 3 keys
+                            keys = list(data.keys())[:3]
+                            preview = {k: data[k] for k in keys}
+                            st.text(json.dumps(preview, indent=2))
+                        else:
+                            st.write(f"*Data:* {str(data)[:300]}")
+                    except Exception:
+                        pass
+
+            # legacy fields from older trace format
             if step.get('action'):
-                st.write(f"*Action*: {step['action']}")
+                st.write(f"*Action:* {step['action']}")
             if step.get('result'):
-                st.write(f"*Result*: {step['result'][:200]}{'...' if len(step['result']) > 200 else ''}")
+                r = step['result']
+                if isinstance(r, str):
+                    st.write(f"*Result:* {r[:200]}{'...' if len(r) > 200 else ''}")
             if step.get('timestamp'):
-                st.write(f"*Time*: {step['timestamp']}")
+                st.write(f"*Time:* {step['timestamp']}")
             st.write("---")
+
 
 def main():
     st.title("🤖 Multi-Agent System")
@@ -159,7 +237,9 @@ def main():
                 if msg['response'].get('confidence'):
                     st.caption(f"Confidence: {msg['response']['confidence']:.2f}")
                 if msg['response'].get('execution_trace'):
-                    display_agent_trace(msg['response']['execution_trace'])
+                    display_agent_trace(
+                        msg['response']['execution_trace'],
+                        agent_results=msg['response'].get('agent_results', {}))
                 st.write("---")
         # This helps scroll to the latest message
         st.markdown("*💬 Latest conversation above*")
@@ -186,11 +266,25 @@ def main():
     if submit_button and query_input.strip():
         with st.spinner("Processing query through multi-agent system..."):
             response_data = asyncio.run(process_query(query_input))
+
+            st.write("🔍 DEBUG: Memory check after query")
+            memory_stats = get_memory_stats(st.session_state.coordinator)
+            st.write(f"🔍 DEBUG: Conversations in memory: {memory_stats.get('conversations', 0)}")
+
+            memory_agent = st.session_state.coordinator.memory_agent
+            st.write(f"🔍 DEBUG: Raw conversation_metadata count: {len(memory_agent.conversation_metadata)}")
+            if memory_agent.conversation_metadata:
+                st.write("🔍 DEBUG: Sample stored conversation:")
+                sample_key = list(memory_agent.conversation_metadata.keys())[0]
+                st.write(f"🔍 DEBUG: {memory_agent.conversation_metadata[sample_key]}")
+
             st.write("🔍 DEBUG: Raw response from coordinator:")
             st.write("Response data:")
             for key, value in response_data.items():
                 st.write(f"  {key}: {str(value)[:200]}{'...' if len(str(value)) > 200 else ''}")
             st.write(f"�� DEBUG: synthesized_answer = {response_data.get('synthesized_answer', 'NOT FOUND')}")
+            st.write("DEBUG: agent_results (keys):", list(response_data.get('agent_results', {}).keys()))
+
         # Store message
         if 'messages' not in st.session_state:
             st.session_state.messages = []

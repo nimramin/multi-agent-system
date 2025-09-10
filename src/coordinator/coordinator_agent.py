@@ -17,7 +17,8 @@ class CoordinatorAgent:
     Main coordinator that orchestrates all other agents.
     Handles task decomposition, agent routing, and result synthesis.
     """
-    
+    MEMORY_REUSE_DISTANCE_THRESHOLD = 0.8
+
     def __init__(self, groq_api_key: Optional[str] = None):
         """Initialize coordinator with all worker agents"""
         self.agent_id = "coordinator"
@@ -40,7 +41,60 @@ class CoordinatorAgent:
         self.execution_history: List[Dict[str, Any]] = []
         
         logger.info("Coordinator initialized with all agents")
-    
+
+    def _normalize_memory_context(self, memory_context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize various possible memory_agent return shapes into a predictable structure:
+        {
+        "results": [ { "content": ..., "metadata": ..., "distance": float|None, "id": ... }, ... ],
+        "count": int,
+        "best_distance": float|None
+        }
+        """
+        if not memory_context:
+            return {"results": [], "count": 0, "best_distance": None}
+
+        # memory_agent returns 'results' for search, or 'memories' for retrieve recent.
+        results = []
+        if isinstance(memory_context, dict):
+            if "results" in memory_context and isinstance(memory_context["results"], list):
+                results = memory_context["results"]
+            elif "memories" in memory_context and isinstance(memory_context["memories"], list):
+                # normalize retrieve -> results with metadata shape similar to search hits
+                results = []
+                for m in memory_context["memories"]:
+                    results.append({
+                        "content": m.get("content") or m.get("data") or m.get("content", ""),
+                        "metadata": {k: v for k, v in m.items() if k not in ("content", "data")},
+                        "distance": m.get("distance") if "distance" in m else None,
+                        "id": m.get("id")
+                    })
+            elif "memories" in memory_context and isinstance(memory_context["memories"], dict):
+                # defensive: sometimes metadata carriers differ
+                results = memory_context["memories"]
+            # if memory_context itself looks like search response
+            elif "action" in memory_context and memory_context.get("action") in ("searched", "retrieved"):
+                # try to extract generic fields
+                if "results" in memory_context:
+                    results = memory_context["results"]
+                elif "memories" in memory_context:
+                    results = memory_context["memories"]
+
+        # Ensure each result has distance key (may be None)
+        best_distance = None
+        for r in results:
+            if isinstance(r, dict):
+                d = r.get("distance", None)
+                if d is not None:
+                    try:
+                        d_float = float(d)
+                        if best_distance is None or d_float < best_distance:
+                            best_distance = d_float
+                    except Exception:
+                        pass
+
+        return {"results": results, "count": len(results), "best_distance": best_distance}
+
     async def process_user_query(self, query: str) -> Dict[str, Any]:
         """
         Main entry point for processing user queries.
@@ -164,41 +218,121 @@ Respond with a JSON plan:
         }
 
     async def _get_memory_context(self, query: str) -> Dict[str, Any]:
-        """Get relevant context from memory"""
+        """Get relevant context from memory. Always returns a normalized dict."""
+        # Basic keywords extraction (keep existing logic but ensure metadata fields used by MemoryAgent)
+        stop_words = {"the","a","an","and","or","but","in","on","at","to","for","of","with","by","about","is","are","what","find","search","retrieve","get"}
+        query_words = query.lower().split()
+        meaningful_words = [w.strip('.,:;!?#()[]{}"\'') for w in query_words if w not in stop_words and len(w) > 2]
+        # Include both exact query and key terms
+        search_content = f"{query} {' '.join(meaningful_words[:10])}"
+
         memory_message = AgentMessage(
             type=MessageType.TASK,
             sender=self.agent_id,
             recipient="memory_agent",
-            content=f"search for relevant information about: {query}",
-            metadata={"memory_type": "conversation", "limit": 3}
+            content=search_content,  # Use enhanced search content
+            metadata={
+                "memory_type": "conversation",
+                "limit": 5,
+                "keywords": meaningful_words[:8]
+            }
         )
 
         memory_result = await self.memory_agent.process_task(memory_message)
-        return memory_result.data if memory_result.success else {}
+        # memory_result.data is expected to be a dict like {"action":"searched","results":[...],...}
+        raw = memory_result.data if memory_result.success else {}
+        normalized = self._normalize_memory_context(raw)
+        # keep original raw (in case we want to persist full memory response)
+        normalized["_raw"] = raw
+        return normalized
+
 
     async def _execute_task_plan(self, query: str, task_plan: Dict[str, Any], memory_context: Dict[str, Any]) -> List[TaskResult]:
-        """Execute the planned tasks with proper agent coordination"""
-        results = []
+        results: List[TaskResult] = []
         accumulated_data = {"memory_context": memory_context}
 
-        for step in task_plan["execution_order"]:
-            if step == "research":
-                result = await self._execute_research_task(query, accumulated_data)
-                results.append(result)
-                if result.success:
-                    accumulated_data["research_results"] = result.data
+        # Always append a memory_agent TaskResult (whether hits or not)
+        mem_results = memory_context.get("results", []) if isinstance(memory_context, dict) else []
+        memory_count = len(mem_results)
+        best_distance = memory_context.get("best_distance") if isinstance(memory_context, dict) else None
 
+        # Heuristic: prefer reuse if best_distance is present and below threshold,
+        # Decide skip_research
+        reuse_based_on_distance = (best_distance is not None and best_distance <= 0.8)
+        reuse_based_on_count = (memory_count >= 2)  # Reduced from 3 to 2
+        skip_research = reuse_based_on_distance or reuse_based_on_count
+
+        memory_trace = TaskResult(
+            agent_id="memory_agent",
+            success=True,
+            data={
+                "results": mem_results,
+                "count": memory_count,
+                "best_distance": best_distance,
+                "used": bool(skip_research),        # Did memory influence plan / replace research?
+                "consulted": True
+            },
+            confidence=0.6 if memory_count > 0 else 0.3,
+            execution_time=0.0
+        )
+        results.append(memory_trace)
+    
+
+        # Trace memory usage if any
+        if memory_count > 0:
+            memory_trace = TaskResult(
+                agent_id="memory_agent",
+                success=True,
+                data={"results": mem_results, "count": memory_count, "best_distance": best_distance},
+                confidence=0.6 if best_distance is None else max(0.1, 1.0 - float(best_distance)),
+                execution_time=0.0
+            )
+            results.append(memory_trace)
+
+        for step in task_plan.get("execution_order", []):
+            if step == "research":
+                if skip_research:
+                    # Normalize memory hits into a research_results dict that AnalysisAgent expects
+                    synthetic_data = {
+                        "research_results": {
+                            "source": "memory",
+                            "hits": mem_results,
+                            "best_distance": best_distance,
+                            "reused": True
+                        }
+                    }
+                    synthetic = TaskResult(
+                        agent_id="research_agent",
+                        success=True,
+                        data=synthetic_data,
+                        confidence=memory_trace.confidence if memory_count > 0 else 0.5,
+                        execution_time=0.0
+                    )
+                    results.append(synthetic)
+                    # keep accumulated_data consistent: analysis expects accumulated_data["research_results"] to be dict
+                    accumulated_data["research_results"] = synthetic_data["research_results"]
+                else:
+                    result = await self._execute_research_task(query, accumulated_data)
+                    results.append(result)
+                    if result.success:
+                        # Ensure we store research_results as a dict under accumulated_data
+                        if isinstance(result.data, dict) and "research_results" in result.data:
+                            accumulated_data["research_results"] = result.data["research_results"]
+                        else:
+                            # fallback wrap
+                            accumulated_data["research_results"] = {"source": "fresh_research", "hits": result.data}
             elif step == "analysis":
                 result = await self._execute_analysis_task(query, accumulated_data)
                 results.append(result)
                 if result.success:
                     accumulated_data["analysis_results"] = result.data
-
             elif step == "memory_retrieval":
                 result = await self._execute_memory_task(query, accumulated_data)
                 results.append(result)
                 if result.success:
-                    accumulated_data["memory_results"] = result.data
+                    # Normalize store of memory retrieval data
+                    data = result.data if isinstance(result.data, dict) else {"result": result.data}
+                    accumulated_data["memory_results"] = data
 
         return results
 
@@ -332,51 +466,40 @@ Respond with a JSON plan:
                 results = research_data["research_results"]
                 if results:
                     answer_parts.append("Based on my research, I found the following information:")
-                    
-                    for topic, data in results.items():
-                        # Format topic name nicely
-                        topic_name = topic.replace('_', ' ').title()
-                        answer_parts.append(f"\n**{topic_name}:**")
-                        
-                        # Add description if available
-                        if "description" in data:
-                            answer_parts.append(f"{data['description']}")
-                        
-                        # Add types if available
-                        if "types" in data and data["types"]:
-                            types_list = ", ".join(data["types"])
-                            answer_parts.append(f"The main types include: {types_list}")
-                        
-                        # Add applications if available
-                        if "applications" in data and data["applications"]:
-                            apps_list = ", ".join(data["applications"])
-                            answer_parts.append(f"These are commonly used for: {apps_list}")
-                        
-                        # Add algorithms if available
-                        if "algorithms" in data and data["algorithms"]:
-                            alg_list = ", ".join(data["algorithms"])
-                            answer_parts.append(f"Key algorithms include: {alg_list}")
-                        
-                        # Add optimization methods if available
-                        if "optimization" in data and data["optimization"]:
-                            opt_list = ", ".join(data["optimization"])
-                            answer_parts.append(f"Common optimization techniques: {opt_list}")
-                        
-                        # Add architectures if available
-                        if "architectures" in data and data["architectures"]:
-                            arch_list = ", ".join(data["architectures"])
-                            answer_parts.append(f"Popular architectures: {arch_list}")
-                        
-                        # Add efficiency information if available
-                        if "efficiency" in data and isinstance(data["efficiency"], dict):
-                            efficiency_info = []
-                            for key, value in data["efficiency"].items():
-                                efficiency_info.append(f"{key}: {value}")
-                            answer_parts.append(f"Efficiency considerations: {', '.join(efficiency_info)}")
-                        
-                        # Add tradeoffs if available
-                        if "tradeoffs" in data:
-                            answer_parts.append(f"Key tradeoffs: {data['tradeoffs']}")
+                    # Support both dict-shaped KB results and memory reuse list results
+                    if isinstance(results, dict):
+                        for topic, data in results.items():
+                            topic_name = topic.replace('_', ' ').title()
+                            answer_parts.append(f"\n**{topic_name}:**")
+                            if isinstance(data, dict):
+                                if "description" in data:
+                                    answer_parts.append(f"{data['description']}")
+                                if "types" in data and data["types"]:
+                                    answer_parts.append(f"The main types include: {', '.join(data['types'])}")
+                                if "applications" in data and data["applications"]:
+                                    answer_parts.append(f"These are commonly used for: {', '.join(data['applications'])}")
+                                if "algorithms" in data and data["algorithms"]:
+                                    answer_parts.append(f"Key algorithms include: {', '.join(data['algorithms'])}")
+                                if "optimization" in data and data["optimization"]:
+                                    answer_parts.append(f"Common optimization techniques: {', '.join(data['optimization'])}")
+                                if "architectures" in data and data["architectures"]:
+                                    answer_parts.append(f"Popular architectures: {', '.join(data['architectures'])}")
+                                if "efficiency" in data and isinstance(data["efficiency"], dict):
+                                    efficiency_info = [f"{k}: {v}" for k, v in data["efficiency"].items()]
+                                    answer_parts.append(f"Efficiency considerations: {', '.join(efficiency_info)}")
+                                if "tradeoffs" in data:
+                                    answer_parts.append(f"Key tradeoffs: {data['tradeoffs']}")
+                            else:
+                                # If data is a string, just include it
+                                answer_parts.append(str(data))
+                    elif isinstance(results, list):
+                        # Memory reuse path: results are search hits from memory
+                        hits = results[:3]
+                        for hit in hits:
+                            meta = hit.get("metadata", {})
+                            snippet = hit.get("content", "").split("\n")[0]
+                            topic = meta.get("topic") or "Previous Context"
+                            answer_parts.append(f"\n**{topic}:** {snippet[:240]}")
         
         # Add detailed analysis insights
         if "analysis_agent" in agent_results:
@@ -422,7 +545,7 @@ Respond with a JSON plan:
             type=MessageType.TASK,
             sender=self.agent_id,
             recipient="memory_agent",
-            content=f"User asked: {query}",
+            content=f"{query}",
             metadata={
                 "data": {
                     "query": query,
@@ -431,8 +554,9 @@ Respond with a JSON plan:
                     "confidence": response["confidence"]
                 },
                 "memory_type": "conversation",
-                "source": "coordinator"
-            }
+                "source": "coordinator",
+                "raw_answer": response["synthesized_answer"]
+            },
         )
         
         await self.memory_agent.process_task(memory_message)
