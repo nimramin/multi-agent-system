@@ -43,11 +43,12 @@ graph TD
         JSON
         CACHE
     end
-
+```
 
 ## Test Scenarios
 
 All 5 required scenarios included:
+
 1. Simple Query: "What are the main types of neural networks?"
 2. Complex Query: Transformer architectures analysis
 3. Memory Test: Previous conversation retrieval
@@ -68,7 +69,7 @@ All 5 required scenarios included:
 ```
 
 ├── src/agents/ - All agent implementations
-├── src/coordinator/ - Main orchestrator  
+├── src/coordinator/ - Main orchestrator
 ├── src/memory/ - Memory management
 ├── outputs/ - Test scenario results
 ├── docker-compose.yml - Container orchestration
@@ -87,4 +88,7 @@ All 5 required scenarios included:
 - Python 3.9+, UV package manager
 - ChromaDB, Streamlit, Groq (optional)
 - Docker for containerized deployment
-```
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).

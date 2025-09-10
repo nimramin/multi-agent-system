@@ -265,13 +265,7 @@ Respond with a JSON plan:
         memory_trace = TaskResult(
             agent_id="memory_agent",
             success=True,
-            data={
-                "results": mem_results,
-                "count": memory_count,
-                "best_distance": best_distance,
-                "used": bool(skip_research),        # Did memory influence plan / replace research?
-                "consulted": True
-            },
+            data={"results": mem_results, "count": memory_count, "best_distance": best_distance, "used": bool(skip_research), "consulted": True},
             confidence=0.6 if memory_count > 0 else 0.3,
             execution_time=0.0
         )

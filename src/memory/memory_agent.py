@@ -330,30 +330,19 @@ class MemoryAgent(BaseAgent):
 
         # If vector search returned nothing, attempt textual fallback too
         if not search_results:
-            all_items = collection.get(limit=100)
+            all_items = collection.get(limit=500)
             docs = all_items.get("documents", []) or []
             metas = all_items.get("metadatas", []) or []
             ids = all_items.get("ids", []) or []
-            stop_words = {"the","a","an","and","or","but","in","on","at","to","for","of","with","by","about","is","are","what","find","search","retrieve","get"}
-            q_tokens = [w for w in query.lower().split() if w not in stop_words and len(w) > 2]
+            q_lower = query.lower().strip()
             for i, doc in enumerate(docs):
-                meta = metas[i] if i < len(metas) else {}
-                doc_lower = (doc or "").lower()
-                match_text = any(t in doc_lower for t in q_tokens) if q_tokens else False
-                match_topic = (topic_filter is None) or (meta.get("topic") == topic_filter)
-                match_keywords = True
-                if keywords_filter:
-                    stored_csv = meta.get("keywords_csv") or ""
-                    match_keywords = any(k in stored_csv for k in keywords_filter)
-                if match_text and match_topic and match_keywords:
+                if q_lower == (doc or "").lower().strip() or q_lower in (doc or "").lower():
                     search_results.append({
                         "content": doc,
-                        "metadata": meta,
+                        "metadata": metas[i] if i < len(metas) else {},
                         "distance": None,
                         "id": ids[i] if i < len(ids) else None
                     })
-            search_results = search_results[:n_results]
-        
         return {
             "action": "searched",
             "query": query,
